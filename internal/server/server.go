@@ -17,7 +17,7 @@ import (
 )
 
 func init() {
-	jsonschema.Version = "https://json-schema.org/draft-07/schema#"
+	jsonschema.Version = "https://json-schema.org/draft/2020-12/schema"
 }
 
 // MCPServer wraps the KRR functionality as an MCP server
@@ -60,7 +60,7 @@ type KRRScanArguments struct {
 	CPUMax        *string `json:"cpu_max,omitempty" jsonschema:"description=Maximum CPU recommendation threshold (e.g. '2')"`
 	MemoryMin     *string `json:"memory_min,omitempty" jsonschema:"description=Minimum memory recommendation threshold (e.g. '128Mi')"`
 	MemoryMax     *string `json:"memory_max,omitempty" jsonschema:"description=Maximum memory recommendation threshold (e.g. '4Gi')"`
-	OutputFormat  *string `json:"output_format,omitempty" jsonschema:"description=Output format: 'json' or 'yaml' (default: json),enum=json,enum=yaml"`
+	OutputFormat  *string `json:"output_format,omitempty" jsonschema:"description=Output format (fixed to 'table' - this parameter is ignored),enum=table"`
 	RecommendOnly *bool   `json:"recommend_only,omitempty" jsonschema:"description=Only show resources that have recommendations (default: false)"`
 	Verbose       *bool   `json:"verbose,omitempty" jsonschema:"description=Enable verbose output (default: false)"`
 	KRRPath       *string `json:"krr_path,omitempty" jsonschema:"description=Override the path to the KRR CLI executable (optional)"`
@@ -96,6 +96,9 @@ func (s *MCPServer) registerTools() error {
 
 	return nil
 }
+func (s *MCPServer) ExecuteScan(arguments KRRScanArguments) (*mcp.ToolResponse, error) {
+	return s.handleScan(arguments)
+}
 
 // handleScan handles the krr_scan tool execution
 func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, error) {
@@ -105,7 +108,7 @@ func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, e
 
 	// Parse arguments into ScanOptions
 	options := krr.ScanOptions{
-		Output: krr.OutputFormat(s.config.DefaultOutputFormat),
+		Output: krr.OutputTable, // Force table format only
 	}
 
 	executor := s.executor
@@ -149,9 +152,7 @@ func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, e
 		options.MemoryMax = *arguments.MemoryMax
 	}
 
-	if arguments.OutputFormat != nil {
-		options.Output = krr.OutputFormat(*arguments.OutputFormat)
-	}
+	// OutputFormat is ignored - always use table format
 
 	if arguments.RecommendOnly != nil {
 		options.RecommendOnly = *arguments.RecommendOnly
@@ -173,11 +174,19 @@ func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, e
 		return mcp.NewToolResponse(mcp.NewTextContent(errorMsg)), nil
 	}
 
-	// Format the result
+	// Format the result based on output format
+	// For table and yaml formats, return raw output directly to save tokens
+	if options.Output == krr.OutputTable || options.Output == krr.OutputYAML {
+		//fmt.Printf("Scan Response (raw): %s\n", result.RawOutput)
+		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("KRR Scan Results:\n\n%s", result.RawOutput))), nil
+	}
+
+	// For JSON format, return structured data
 	resultJSON, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Failed to format scan result: %v", err))), nil
 	}
+	fmt.Printf("Scan Response: %s\n", string(resultJSON))
 
 	return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("KRR Scan Results:\n\n%s", string(resultJSON)))), nil
 }

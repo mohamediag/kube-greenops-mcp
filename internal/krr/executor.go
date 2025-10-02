@@ -78,10 +78,8 @@ func (e *CLIExecutor) Scan(ctx context.Context, options ScanOptions) (*ScanResul
 		args = append(args, "--verbose")
 	}
 
-	// Add quiet mode if no-color is specified (closest equivalent)
-	if options.NoColor {
-		args = append(args, "--quiet")
-	}
+	// Always add quiet mode by default
+	args = append(args, "--quiet")
 
 	// Execute the command with timeout context
 	timeoutCtx := ctx

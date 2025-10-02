@@ -8,8 +8,9 @@ import (
 type OutputFormat string
 
 const (
-	OutputJSON OutputFormat = "json"
-	OutputYAML OutputFormat = "yaml"
+	OutputJSON  OutputFormat = "json"
+	OutputYAML  OutputFormat = "yaml"
+	OutputTable OutputFormat = "table"
 )
 
 // ScanOptions represents options for KRR scanning

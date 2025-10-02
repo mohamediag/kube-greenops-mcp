@@ -38,7 +38,7 @@ func DefaultConfig() *Config {
 		ServerName:        "krr-mcp-server",
 		ServerVersion:     "1.0.0",
 		DefaultNamespace:  "",
-		DefaultOutputFormat: "json",
+		DefaultOutputFormat: "table",
 		DefaultNoColor:    true,
 		LogLevel:          "info",
 		LogFile:           "",
@@ -136,8 +136,8 @@ func (c *Config) Validate() error {
 	}
 	
 	// Validate output format
-	if c.DefaultOutputFormat != "json" && c.DefaultOutputFormat != "yaml" {
-		return fmt.Errorf("default_output_format must be 'json' or 'yaml'")
+	if c.DefaultOutputFormat != "json" && c.DefaultOutputFormat != "yaml" && c.DefaultOutputFormat != "table" {
+		return fmt.Errorf("default_output_format must be 'json', 'yaml', or 'table'")
 	}
 	
 	// Validate log level

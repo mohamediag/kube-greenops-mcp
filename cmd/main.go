@@ -153,13 +153,28 @@ func validateKRRInstallation(cfg *config.Config) error {
 func runServer(cfg *config.Config) error {
 	// Create MCP server
 	mcpServer, err := server.NewMCPServer(cfg)
+
 	if err != nil {
 		return fmt.Errorf("failed to create MCP server: %w", err)
 	}
+	//executeScan(mcpServer)
 
 	// Start server in a goroutine
 	err = mcpServer.Run()
 
 	return err
+
+}
+
+func executeScan(mcpServer *server.MCPServer) error {
+	//var namespace string = "argocd"
+	arguments := server.KRRScanArguments{}
+
+	_, err := mcpServer.ExecuteScan(arguments)
+	if err != nil {
+		return fmt.Errorf("scan execution failed: %w", err)
+	}
+	//fmt.Printf("Scan Response: %s\n", response.Content)
+	return nil
 
 }
