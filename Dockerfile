@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM --platform=linux/amd64 golang:1.24.2-alpine AS builder
 
 WORKDIR /build
 
@@ -14,16 +14,17 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o krr-mcp ./main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -o krr-mcp ./main.go
 
 # Runtime stage
-FROM python:3.11-slim
+FROM --platform=linux/amd64 python:3.11-slim
 
 WORKDIR /app
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install kubectl
@@ -31,8 +32,11 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     && chmod +x kubectl \
     && mv kubectl /usr/local/bin/
 
-# Install KRR CLI
-RUN pip install --no-cache-dir krr
+# Install KRR CLI from source
+RUN git clone https://github.com/robusta-dev/krr /opt/krr \
+    && pip install --no-cache-dir -r /opt/krr/requirements.txt \
+    && echo '#!/bin/sh\npython /opt/krr/krr.py "$@"' > /usr/local/bin/krr \
+    && chmod +x /usr/local/bin/krr
 
 # Copy binary from builder
 COPY --from=builder /build/krr-mcp /app/krr-mcp

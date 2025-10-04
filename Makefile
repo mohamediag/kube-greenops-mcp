@@ -2,7 +2,7 @@
 
 # Variables
 BINARY_NAME=krr-mcp-server
-BINARY_PATH=./cmd
+BINARY_PATH=.
 BUILD_DIR=./build
 GO_VERSION=$(shell go version | awk '{print $$3}')
 GIT_COMMIT=$(shell git rev-parse --short HEAD)
@@ -108,7 +108,7 @@ uninstall:
 # Development server (with auto-reload using air if available)
 .PHONY: dev
 dev:
-	@which air > /dev/null && air || go run ${BINARY_PATH}/main.go -log-level debug
+	@which air > /dev/null && air || go run main.go -log-level debug
 
 # Docker targets
 .PHONY: docker-build
