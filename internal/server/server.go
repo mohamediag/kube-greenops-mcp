@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"greenops-mcp/internal/config"
 	"greenops-mcp/internal/krr"
@@ -66,32 +65,12 @@ type KRRScanArguments struct {
 	KRRPath       *string `json:"krr_path,omitempty" jsonschema:"description=Override the path to the KRR CLI executable (optional)"`
 }
 
-// KRRPathArguments allow overriding the KRR binary location for targeted commands
-type KRRPathArguments struct {
-	KRRPath *string `json:"krr_path,omitempty" jsonschema:"description=Override the path to the KRR CLI executable (optional)"`
-}
-
 // registerTools registers all KRR tools with the MCP server
 func (s *MCPServer) registerTools() error {
 	// Register krr_scan tool
 	if err := s.server.RegisterTool("krr_scan", "Execute a KRR (Kubernetes Resource Recommender) scan to analyze resource usage and get recommendations",
 		s.handleScan); err != nil {
 		return fmt.Errorf("failed to register krr_scan tool: %w", err)
-	}
-
-	// Register krr_validate tool
-	if err := s.server.RegisterTool("krr_validate", "Validate that KRR CLI is properly installed and accessible", s.handleValidate); err != nil {
-		return fmt.Errorf("failed to register krr_validate tool: %w", err)
-	}
-
-	// Register krr_version tool
-	if err := s.server.RegisterTool("krr_version", "Get the version of the installed KRR CLI", s.handleVersion); err != nil {
-		return fmt.Errorf("failed to register krr_version tool: %w", err)
-	}
-
-	// Register krr_strategies tool
-	if err := s.server.RegisterTool("krr_strategies", "List available KRR recommendation strategies", s.handleStrategies); err != nil {
-		return fmt.Errorf("failed to register krr_strategies tool: %w", err)
 	}
 
 	return nil
@@ -189,77 +168,6 @@ func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, e
 	fmt.Printf("Scan Response: %s\n", string(resultJSON))
 
 	return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("KRR Scan Results:\n\n%s", string(resultJSON)))), nil
-}
-
-// handleValidate handles the krr_validate tool execution
-func (s *MCPServer) handleValidate(arguments KRRPathArguments) (*mcp.ToolResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	executor := s.executor
-	if arguments.KRRPath != nil && strings.TrimSpace(*arguments.KRRPath) != "" {
-		executor = krr.NewCLIExecutor(strings.TrimSpace(*arguments.KRRPath), s.config.DefaultTimeout)
-	}
-
-	err := executor.ValidateInstallation(ctx)
-	if err != nil {
-		errorMsg := fmt.Sprintf("KRR validation failed: %v", err)
-		if strings.Contains(err.Error(), "executable file not found") {
-			errorMsg += "\n\nKRR CLI is not installed or not in PATH. Please install it with:\n  pip install krr\n\nThen verify installation with:\n  krr --version"
-		}
-		return mcp.NewToolResponse(mcp.NewTextContent(errorMsg)), nil
-	}
-
-	return mcp.NewToolResponse(mcp.NewTextContent("KRR CLI is properly installed and accessible")), nil
-}
-
-// handleVersion handles the krr_version tool execution
-func (s *MCPServer) handleVersion(arguments KRRPathArguments) (*mcp.ToolResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	executor := s.executor
-	if arguments.KRRPath != nil && strings.TrimSpace(*arguments.KRRPath) != "" {
-		executor = krr.NewCLIExecutor(strings.TrimSpace(*arguments.KRRPath), s.config.DefaultTimeout)
-	}
-
-	version, err := executor.GetVersion(ctx)
-	if err != nil {
-		errorMsg := fmt.Sprintf("Failed to get KRR version: %v", err)
-		if strings.Contains(err.Error(), "executable file not found") {
-			errorMsg += "\n\nKRR CLI is not installed or not in PATH. Please install it with:\n  pip install krr\n\nThen verify installation with:\n  krr --version"
-		}
-		return mcp.NewToolResponse(mcp.NewTextContent(errorMsg)), nil
-	}
-
-	return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("KRR CLI Version: %s", version))), nil
-}
-
-// handleStrategies handles the krr_strategies tool execution
-func (s *MCPServer) handleStrategies(arguments KRRPathArguments) (*mcp.ToolResponse, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	executor := s.executor
-	if arguments.KRRPath != nil && strings.TrimSpace(*arguments.KRRPath) != "" {
-		executor = krr.NewCLIExecutor(strings.TrimSpace(*arguments.KRRPath), s.config.DefaultTimeout)
-	}
-
-	strategies, err := executor.ListStrategies(ctx)
-	if err != nil {
-		errorMsg := fmt.Sprintf("Failed to get KRR strategies: %v", err)
-		if strings.Contains(err.Error(), "executable file not found") {
-			errorMsg += "\n\nKRR CLI is not installed or not in PATH. Please install it with:\n  pip install krr\n\nThen verify installation with:\n  krr --version"
-		}
-		return mcp.NewToolResponse(mcp.NewTextContent(errorMsg)), nil
-	}
-
-	strategiesJSON, err := json.MarshalIndent(strategies, "", "  ")
-	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Failed to format strategies: %v", err))), nil
-	}
-
-	return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Available KRR Strategies:\n\n%s", string(strategiesJSON)))), nil
 }
 
 // Run starts the MCP server
