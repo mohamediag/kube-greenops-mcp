@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: krr-mcp
+  namespace: krr-mcp
+  labels:
+    app: krr-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: krr-mcp
+  template:
+    metadata:
+      labels:
+        app: krr-mcp
+    spec:
+      serviceAccountName: krr-mcp
+      containers:
+        - name: krr-mcp
+          image: krr-mcp:latest  # Replace with your actual image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: KRR_PATH
+              value: "/usr/local/bin/krr"
+            - name: KRR_OUTPUT_FORMAT
+              value: "table"
+            - name: KRR_LOG_LEVEL
+              value: "info"
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: config
+          configMap:
+            name: krr-mcp-config
+      restartPolicy: Always

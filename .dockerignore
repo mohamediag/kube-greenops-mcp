@@ -1,0 +1,47 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+build/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+coverage.out
+coverage.html
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Kubernetes manifests (not needed in container)
+k8s/
+
+# Local development
+tmp/
+temp/
+vendor/
+.env
+.env.*
+*.local
+
+# Logs
+*.log

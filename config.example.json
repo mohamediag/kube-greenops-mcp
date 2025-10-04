@@ -1,0 +1,12 @@
+{
+  "krr_path": "krr",
+  "default_timeout": "5m",
+  "default_strategy": "simple",
+  "server_name": "krr-mcp-server",
+  "server_version": "1.0.0",
+  "default_namespace": "",
+  "default_output_format": "table",
+  "default_no_color": true,
+  "log_level": "info",
+  "log_file": ""
+}

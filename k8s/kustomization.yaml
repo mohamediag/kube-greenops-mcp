@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: krr-mcp
+
+resources:
+  - namespace.yaml
+  - rbac.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+
+commonLabels:
+  app: krr-mcp
+
+images:
+  - name: krr-mcp
+    newName: your-registry/krr-mcp  # Update with your registry
+    newTag: latest
