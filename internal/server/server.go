@@ -5,25 +5,34 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"greenops-mcp/internal/config"
 	"greenops-mcp/internal/krr"
 
+	"github.com/gin-gonic/gin"
 	"github.com/invopop/jsonschema"
 	mcp "github.com/metoro-io/mcp-golang"
-	"github.com/metoro-io/mcp-golang/transport/stdio"
+	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
 )
 
 func init() {
-	jsonschema.Version = "https://json-schema.org/draft/2020-12/schema"
+	jsonschema.Version = "https://json-schema.org/draft-07/schema"
 }
 
 // MCPServer wraps the KRR functionality as an MCP server
 type MCPServer struct {
-	server   *mcp.Server
-	executor krr.Executor
-	config   *config.Config
+	server     *mcp.Server
+	executor   krr.Executor
+	config     *config.Config
+	httpServer *http.Server
+	ginEngine  *gin.Engine
+	transport  *mcphttp.GinTransport
 }
 
 // NewMCPServer creates a new MCP server instance
@@ -31,14 +40,24 @@ func NewMCPServer(cfg *config.Config) (*MCPServer, error) {
 	// Create KRR executor
 	executor := krr.NewCLIExecutor(cfg.KRRPath, cfg.DefaultTimeout)
 
-	// Create MCP server with stdio transport
-	transport := stdio.NewStdioServerTransport()
+	// Create Gin engine
+	gin.SetMode(gin.ReleaseMode)
+	ginEngine := gin.New()
+	ginEngine.Use(gin.Recovery())
+
+	// Create MCP server with Gin HTTP transport
+	transport := mcphttp.NewGinTransport()
 	server := mcp.NewServer(transport)
 
+	// Register MCP handler
+	ginEngine.POST("/mcp", transport.Handler())
+
 	mcpServer := &MCPServer{
-		server:   server,
-		executor: executor,
-		config:   cfg,
+		server:    server,
+		executor:  executor,
+		config:    cfg,
+		ginEngine: ginEngine,
+		transport: transport,
 	}
 
 	// Register tools
@@ -175,10 +194,43 @@ func (s *MCPServer) Run() error {
 	log.Printf("Starting KRR MCP Server %s version %s", s.config.ServerName, s.config.ServerVersion)
 	log.Printf("Using KRR CLI at: %s", s.config.KRRPath)
 
-	if err := s.server.Serve(); err != nil {
-		log.Fatalf("Server error: %v", err)
+	// Create HTTP server with Gin
+	s.httpServer = &http.Server{
+		Addr:    ":8080",
+		Handler: s.ginEngine,
 	}
-	select {}
+
+	log.Printf("Server ready to accept MCP requests on http://0.0.0.0:8080/mcp")
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// Start HTTP server in goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errChan <- fmt.Errorf("HTTP server error: %w", err)
+		}
+	}()
+
+	// Start MCP server (handles the transport lifecycle)
+	go func() {
+		if err := s.server.Serve(); err != nil {
+			errChan <- fmt.Errorf("MCP server error: %w", err)
+		}
+	}()
+
+	// Wait for either signal or error
+	select {
+	case sig := <-sigChan:
+		log.Printf("Received signal: %v, shutting down gracefully", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return s.httpServer.Shutdown(ctx)
+	case err := <-errChan:
+		return err
+	}
 }
 
 // Close gracefully shuts down the server

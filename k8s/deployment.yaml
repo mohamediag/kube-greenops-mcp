@@ -18,7 +18,7 @@ spec:
       serviceAccountName: krr-mcp
       containers:
         - name: krr-mcp
-          image: krr-mcp:latest  # Replace with your actual image
+          image: diagit.azurecr.io/krrmcp:1.7  # Replace with your actual image
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
