@@ -157,7 +157,7 @@ func runServer(cfg *config.Config) error {
 	if err != nil {
 		return fmt.Errorf("failed to create MCP server: %w", err)
 	}
-	//executeScan(mcpServer)
+	executeScan(mcpServer)
 
 	// Start server in a goroutine
 	err = mcpServer.Run()
@@ -167,14 +167,20 @@ func runServer(cfg *config.Config) error {
 }
 
 func executeScan(mcpServer *server.MCPServer) error {
-	//var namespace string = "argocd"
-	arguments := server.KRRScanArguments{}
+	var namespace string = "nginx"
+	recommendOnly := true
+	verbose := true
+	arguments := server.KRRScanArguments{
+		Namespace:     &namespace,
+		RecommendOnly: &recommendOnly,
+		Verbose:       &verbose,
+	}
 
-	_, err := mcpServer.ExecuteScan(arguments)
+	response, err := mcpServer.ExecuteScan(arguments)
 	if err != nil {
 		return fmt.Errorf("scan execution failed: %w", err)
 	}
-	//fmt.Printf("Scan Response: %s\n", response.Content)
+	fmt.Printf("Scan Response: %+v\n", response)
 	return nil
 
 }

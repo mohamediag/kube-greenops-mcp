@@ -18,7 +18,7 @@ spec:
       serviceAccountName: krr-mcp
       containers:
         - name: krr-mcp
-          image: diagit.azurecr.io/krrmcp:1.7  # Replace with your actual image
+          image: diagit.azurecr.io/krrmcp:1.9  # Replace with your actual image
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
@@ -31,10 +31,14 @@ spec:
               value: "table"
             - name: KRR_LOG_LEVEL
               value: "info"
+            - name: MPLCONFIGDIR
+              value: "/tmp/matplotlib"
           volumeMounts:
             - name: config
               mountPath: /app/config
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
           resources:
             requests:
               cpu: 100m
@@ -54,4 +58,6 @@ spec:
         - name: config
           configMap:
             name: krr-mcp-config
+        - name: tmp
+          emptyDir: {}
       restartPolicy: Always

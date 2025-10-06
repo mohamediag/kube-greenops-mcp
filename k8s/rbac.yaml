@@ -22,6 +22,7 @@ rules:
       - nodes
       - namespaces
       - persistentvolumeclaims
+      - services
     verbs: ["get", "list", "watch"]
 
   - apiGroups: ["apps"]

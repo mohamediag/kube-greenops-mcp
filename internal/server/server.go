@@ -15,15 +15,8 @@ import (
 	"greenops-mcp/internal/config"
 	"greenops-mcp/internal/krr"
 
-	"github.com/gin-gonic/gin"
-	"github.com/invopop/jsonschema"
-	mcp "github.com/metoro-io/mcp-golang"
-	mcphttp "github.com/metoro-io/mcp-golang/transport/http"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-func init() {
-	jsonschema.Version = "https://json-schema.org/draft-07/schema"
-}
 
 // MCPServer wraps the KRR functionality as an MCP server
 type MCPServer struct {
@@ -31,8 +24,6 @@ type MCPServer struct {
 	executor   krr.Executor
 	config     *config.Config
 	httpServer *http.Server
-	ginEngine  *gin.Engine
-	transport  *mcphttp.GinTransport
 }
 
 // NewMCPServer creates a new MCP server instance
@@ -40,24 +31,16 @@ func NewMCPServer(cfg *config.Config) (*MCPServer, error) {
 	// Create KRR executor
 	executor := krr.NewCLIExecutor(cfg.KRRPath, cfg.DefaultTimeout)
 
-	// Create Gin engine
-	gin.SetMode(gin.ReleaseMode)
-	ginEngine := gin.New()
-	ginEngine.Use(gin.Recovery())
-
-	// Create MCP server with Gin HTTP transport
-	transport := mcphttp.NewGinTransport()
-	server := mcp.NewServer(transport)
-
-	// Register MCP handler
-	ginEngine.POST("/mcp", transport.Handler())
+	// Create MCP server
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    cfg.ServerName,
+		Version: cfg.ServerVersion,
+	}, nil)
 
 	mcpServer := &MCPServer{
-		server:    server,
-		executor:  executor,
-		config:    cfg,
-		ginEngine: ginEngine,
-		transport: transport,
+		server:   server,
+		executor: executor,
+		config:   cfg,
 	}
 
 	// Register tools
@@ -70,39 +53,51 @@ func NewMCPServer(cfg *config.Config) (*MCPServer, error) {
 
 // KRRScanArguments defines the arguments for the krr_scan tool
 type KRRScanArguments struct {
-	Namespace     *string `json:"namespace,omitempty" jsonschema:"description=Kubernetes namespace to scan (optional, scans all namespaces if not specified)"`
-	Context       *string `json:"context,omitempty" jsonschema:"description=Kubernetes context to use (optional, uses current context if not specified)"`
-	ClusterName   *string `json:"cluster_name,omitempty" jsonschema:"description=Name of the cluster for reporting purposes (optional)"`
-	Strategy      *string `json:"strategy,omitempty" jsonschema:"description=Recommendation strategy to use (e.g. 'simple' 'advanced')"`
-	CPUMin        *string `json:"cpu_min,omitempty" jsonschema:"description=Minimum CPU recommendation threshold (e.g. '100m')"`
-	CPUMax        *string `json:"cpu_max,omitempty" jsonschema:"description=Maximum CPU recommendation threshold (e.g. '2')"`
-	MemoryMin     *string `json:"memory_min,omitempty" jsonschema:"description=Minimum memory recommendation threshold (e.g. '128Mi')"`
-	MemoryMax     *string `json:"memory_max,omitempty" jsonschema:"description=Maximum memory recommendation threshold (e.g. '4Gi')"`
-	OutputFormat  *string `json:"output_format,omitempty" jsonschema:"description=Output format (fixed to 'table' - this parameter is ignored),enum=table"`
-	RecommendOnly *bool   `json:"recommend_only,omitempty" jsonschema:"description=Only show resources that have recommendations (default: false)"`
-	Verbose       *bool   `json:"verbose,omitempty" jsonschema:"description=Enable verbose output (default: false)"`
-	KRRPath       *string `json:"krr_path,omitempty" jsonschema:"description=Override the path to the KRR CLI executable (optional)"`
+	Namespace     *string `json:"namespace,omitempty" jsonschema:"Kubernetes namespace to scan (optional, scans all namespaces if not specified)"`
+	Context       *string `json:"context,omitempty" jsonschema:"Kubernetes context to use (optional, uses current context if not specified)"`
+	ClusterName   *string `json:"cluster_name,omitempty" jsonschema:"Name of the cluster for reporting purposes (optional)"`
+	Strategy      *string `json:"strategy,omitempty" jsonschema:"Recommendation strategy to use (e.g. 'simple' 'advanced')"`
+	CPUMin        *string `json:"cpu_min,omitempty" jsonschema:"Minimum CPU recommendation threshold (e.g. '100m')"`
+	CPUMax        *string `json:"cpu_max,omitempty" jsonschema:"Maximum CPU recommendation threshold (e.g. '2')"`
+	MemoryMin     *string `json:"memory_min,omitempty" jsonschema:"Minimum memory recommendation threshold (e.g. '128Mi')"`
+	MemoryMax     *string `json:"memory_max,omitempty" jsonschema:"Maximum memory recommendation threshold (e.g. '4Gi')"`
+	OutputFormat  *string `json:"output_format,omitempty" jsonschema:"Output format (fixed to 'table' - this parameter is ignored)"`
+	RecommendOnly *bool   `json:"recommend_only,omitempty" jsonschema:"Only show resources that have recommendations (default: false)"`
+	Verbose       *bool   `json:"verbose,omitempty" jsonschema:"Enable verbose output (default: false)"`
+	KRRPath       *string `json:"krr_path,omitempty" jsonschema:"Override the path to the KRR CLI executable (optional)"`
+}
+
+// KRRScanOutput defines the output structure for krr_scan tool
+type KRRScanOutput struct {
+	Result string `json:"result"`
 }
 
 // registerTools registers all KRR tools with the MCP server
 func (s *MCPServer) registerTools() error {
-	// Register krr_scan tool
-	if err := s.server.RegisterTool("krr_scan", "Execute a KRR (Kubernetes Resource Recommender) scan to analyze resource usage and get recommendations",
-		s.handleScan); err != nil {
-		return fmt.Errorf("failed to register krr_scan tool: %w", err)
-	}
+	// Register krr_scan tool using AddTool with type-safe handler
+	mcp.AddTool(s.server, &mcp.Tool{
+		Name:        "krr_scan",
+		Description: "Execute a KRR (Kubernetes Resource Recommender) scan to analyze resource usage and get recommendations",
+	}, s.handleScanTyped)
 
 	return nil
 }
-func (s *MCPServer) ExecuteScan(arguments KRRScanArguments) (*mcp.ToolResponse, error) {
-	return s.handleScan(arguments)
+
+// ExecuteScan is a public method for testing purposes
+func (s *MCPServer) ExecuteScan(arguments KRRScanArguments) (KRRScanOutput, error) {
+	req := &mcp.CallToolRequest{}
+	_, output, err := s.handleScanTyped(context.Background(), req, arguments)
+	return output, err
 }
 
-// handleScan handles the krr_scan tool execution
-func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, error) {
-	// Create context with default timeout
-	ctx, cancel := context.WithTimeout(context.Background(), s.config.DefaultTimeout)
-	defer cancel()
+// handleScanTyped handles the krr_scan tool execution with type-safe API
+func (s *MCPServer) handleScanTyped(ctx context.Context, req *mcp.CallToolRequest, arguments KRRScanArguments) (*mcp.CallToolResult, KRRScanOutput, error) {
+	// Create context with timeout if not already set
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.config.DefaultTimeout)
+		defer cancel()
+	}
 
 	// Parse arguments into ScanOptions
 	options := krr.ScanOptions{
@@ -156,10 +151,6 @@ func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, e
 		options.RecommendOnly = *arguments.RecommendOnly
 	}
 
-	if arguments.Verbose != nil {
-		options.Verbose = *arguments.Verbose
-	}
-
 	options.NoColor = s.config.DefaultNoColor
 
 	// Execute the scan
@@ -169,24 +160,34 @@ func (s *MCPServer) handleScan(arguments KRRScanArguments) (*mcp.ToolResponse, e
 		if strings.Contains(err.Error(), "executable file not found") {
 			errorMsg += "\n\nKRR CLI is not installed or not in PATH. Please install it with:\n  pip install krr\n\nThen verify installation with:\n  krr --version"
 		}
-		return mcp.NewToolResponse(mcp.NewTextContent(errorMsg)), nil
+		return &mcp.CallToolResult{
+			Content: []mcp.Content{
+				&mcp.TextContent{Text: errorMsg},
+			},
+			IsError: true,
+		}, KRRScanOutput{}, nil
 	}
 
 	// Format the result based on output format
+	var outputText string
 	// For table and yaml formats, return raw output directly to save tokens
 	if options.Output == krr.OutputTable || options.Output == krr.OutputYAML {
-		//fmt.Printf("Scan Response (raw): %s\n", result.RawOutput)
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("KRR Scan Results:\n\n%s", result.RawOutput))), nil
+		outputText = fmt.Sprintf("KRR Scan Results:\n\n%s", result.RawOutput)
+	} else {
+		// For JSON format, return structured data
+		resultJSON, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{
+					&mcp.TextContent{Text: fmt.Sprintf("Failed to format scan result: %v", err)},
+				},
+				IsError: true,
+			}, KRRScanOutput{}, nil
+		}
+		outputText = fmt.Sprintf("KRR Scan Results:\n\n%s", string(resultJSON))
 	}
 
-	// For JSON format, return structured data
-	resultJSON, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("Failed to format scan result: %v", err))), nil
-	}
-	fmt.Printf("Scan Response: %s\n", string(resultJSON))
-
-	return mcp.NewToolResponse(mcp.NewTextContent(fmt.Sprintf("KRR Scan Results:\n\n%s", string(resultJSON)))), nil
+	return nil, KRRScanOutput{Result: outputText}, nil
 }
 
 // Run starts the MCP server
@@ -194,10 +195,22 @@ func (s *MCPServer) Run() error {
 	log.Printf("Starting KRR MCP Server %s version %s", s.config.ServerName, s.config.ServerVersion)
 	log.Printf("Using KRR CLI at: %s", s.config.KRRPath)
 
-	// Create HTTP server with Gin
+	// Create streamable HTTP handler
+	handler := mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server {
+			return s.server
+		},
+		&mcp.StreamableHTTPOptions{},
+	)
+
+	// Setup HTTP routes
+	mux := http.NewServeMux()
+	mux.HandleFunc("/mcp", handler.ServeHTTP)
+
+	// Create HTTP server
 	s.httpServer = &http.Server{
 		Addr:    ":8080",
-		Handler: s.ginEngine,
+		Handler: mux,
 	}
 
 	log.Printf("Server ready to accept MCP requests on http://0.0.0.0:8080/mcp")
@@ -211,13 +224,6 @@ func (s *MCPServer) Run() error {
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- fmt.Errorf("HTTP server error: %w", err)
-		}
-	}()
-
-	// Start MCP server (handles the transport lifecycle)
-	go func() {
-		if err := s.server.Serve(); err != nil {
-			errChan <- fmt.Errorf("MCP server error: %w", err)
 		}
 	}()
 
@@ -235,7 +241,10 @@ func (s *MCPServer) Run() error {
 
 // Close gracefully shuts down the server
 func (s *MCPServer) Close() error {
-	// The mcp-golang server doesn't seem to have a Close method in the current API
-	// This method is kept for interface compatibility
+	if s.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return s.httpServer.Shutdown(ctx)
+	}
 	return nil
 }
